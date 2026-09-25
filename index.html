@@ -57,6 +57,7 @@
     transition: opacity .8s;
     text-shadow: 0 2px 8px rgba(0,0,0,0.5);
     padding: 0 20px;
+    z-index: 20;
   }
   #fps {
     position: fixed;
@@ -126,13 +127,15 @@ const RELEASE_SPEED = 0.12;
 let baseImage = null;
 let imgW, imgH, baseX, baseY;
 let procW, procH;
-let srcCanvas, srcCtx, srcData;
-let procCanvas, procCtx;
+let srcCanvas = null, srcCtx = null, srcData = null;
+let procCanvas = null, procCtx = null;
+let needRefreshSrc = false;
 
 const touches = new Map();
 
 function layoutImage() {
   if (!baseImage) return;
+
   const maxSize = Math.min(W, H) * 0.78;
   const scale = Math.min(maxSize / baseImage.width, maxSize / baseImage.height, 1);
   imgW = Math.round(baseImage.width * scale);
@@ -144,33 +147,51 @@ function layoutImage() {
   procW = Math.max(1, Math.round(baseImage.width * pScale));
   procH = Math.max(1, Math.round(baseImage.height * pScale));
 
-  srcCanvas = document.createElement('canvas');
+  if (!srcCanvas) {
+    srcCanvas = document.createElement('canvas');
+    srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+  }
   srcCanvas.width = procW;
   srcCanvas.height = procH;
-  srcCtx = srcCanvas.getContext('2d');
   srcCtx.drawImage(baseImage, 0, 0, procW, procH);
-  srcData = srcCtx.getImageData(0, 0, procW, procH);
 
-  procCanvas = document.createElement('canvas');
+  if (!procCanvas) {
+    procCanvas = document.createElement('canvas');
+    procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+  }
   procCanvas.width = procW;
   procCanvas.height = procH;
-  procCtx = procCanvas.getContext('2d');
 
+  needRefreshSrc = true;
   touches.clear();
 }
 
 function loadImage(src) {
   loadingEl.classList.add('show');
   const img = new Image();
+  let done = false;
+
+  const finish = (ok) => {
+    if (done) return;
+    done = true;
+    loadingEl.classList.remove('show');
+    if (!ok) {
+      hint.textContent = '❌ 图片加载失败，检查 1.jpg 是否存在';
+      hint.style.opacity = 1;
+    }
+  };
+
+  const timer = setTimeout(() => finish(false), 10000);
+
   img.onload = () => {
+    clearTimeout(timer);
     baseImage = img;
     layoutImage();
-    loadingEl.classList.remove('show');
+    finish(true);
   };
   img.onerror = () => {
-    loadingEl.classList.remove('show');
-    hint.textContent = '❌ 图片加载失败，检查 1.jpg 是否和 index.html 在同一目录';
-    hint.style.opacity = 1;
+    clearTimeout(timer);
+    finish(false);
   };
   img.src = src;
 }
@@ -179,18 +200,32 @@ function loadFromFile(file) {
   loadingEl.classList.add('show');
   const url = URL.createObjectURL(file);
   const img = new Image();
+  let done = false;
+
+  const finish = (ok) => {
+    if (done) return;
+    done = true;
+    loadingEl.classList.remove('show');
+    if (!ok) {
+      hint.textContent = '❌ 图片读取失败，换一张试试';
+      hint.style.opacity = 1;
+    }
+  };
+
+  const timer = setTimeout(() => finish(false), 10000);
+
   img.onload = () => {
     URL.revokeObjectURL(url);
+    clearTimeout(timer);
     baseImage = img;
     layoutImage();
-    loadingEl.classList.remove('show');
+    finish(true);
     hint.style.opacity = 0;
   };
   img.onerror = () => {
     URL.revokeObjectURL(url);
-    loadingEl.classList.remove('show');
-    hint.textContent = '❌ 图片读取失败，换一张试试';
-    hint.style.opacity = 1;
+    clearTimeout(timer);
+    finish(false);
   };
   img.src = url;
 }
@@ -268,6 +303,17 @@ let lastFpsTime = performance.now();
 let frameCount = 0;
 
 function loop() {
+  // 延迟读取像素，避免卡主线程
+  if (needRefreshSrc && srcCtx) {
+    try {
+      srcData = srcCtx.getImageData(0, 0, procW, procH);
+    } catch (err) {
+      console.warn('读取像素失败:', err);
+    }
+    needRefreshSrc = false;
+    loadingEl.classList.remove('show');
+  }
+
   for (const t of touches.values()) {
     if (t.releasing) {
       t.releaseT -= RELEASE_SPEED;
@@ -380,8 +426,8 @@ fileInput.addEventListener('change', (e) => {
   fileInput.value = '';
 });
 
-// ===== 打开就加载 1.jpg =====
-loadImage('./1.jpg');
+// ===== 打开就加载 1.jpg（加 ?v=2 破缓存）=====
+loadImage('./1.jpg?v=2');
 </script>
 </body>
 </html>
