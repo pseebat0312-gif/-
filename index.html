@@ -131,22 +131,21 @@ const hint = document.getElementById('hint');
 const fpsEl = document.getElementById('fps');
 const loadingEl = document.getElementById('loading');
 
-// ===== 所有变量先声明 =====
 let DPR = Math.min(window.devicePixelRatio || 1, 2);
 let W = 0, H = 0;
 
 const PROC_MAX = 220;
 
-// 回弹速度：越小越慢（0.04 比之前 0.12 慢 3 倍）
-const RELEASE_SPEED = 0.04;
+// 回弹速度：非常慢，拉扯感强
+const RELEASE_SPEED = 0.012;
 
-// 揉搓模式参数（力度、半径都加大了）
-const RUB_RADIUS_RATIO = 0.30;
-const RUB_STRENGTH = 1.3;
+// 揉搓模式：力度大（拉丝）、半径大、边缘也拉扯
+const RUB_RADIUS_RATIO = 0.55;
+const RUB_STRENGTH = 2.5;
 
-// 出拳模式参数（更深更大）
-const PUNCH_RADIUS_RATIO = 0.32;
-const PUNCH_DEPTH = 0.9;
+// 出拳模式：力度猛猛大
+const PUNCH_RADIUS_RATIO = 0.45;
+const PUNCH_DEPTH = 2.2;
 
 let mode = 'rub';
 
@@ -278,8 +277,8 @@ function renderDeform() {
 
   const activeTouches = [];
   for (const t of touches.values()) {
-    let px = (t.pressX - baseX) * sx;
-    let py = (t.pressY - baseY) * sy;
+    const px = (t.pressX - baseX) * sx;
+    const py = (t.pressY - baseY) * sy;
     let dx = 0, dy = 0;
     let strength = 0;
 
@@ -298,8 +297,6 @@ function renderDeform() {
     } else {
       let depth = 1.0;
       if (t.releasing) depth = t.releaseT;
-      dx = 0;
-      dy = 0;
       strength = PUNCH_DEPTH * depth;
     }
 
@@ -329,8 +326,8 @@ function renderDeform() {
         if (t.mode === 'rub') {
           const radius = Math.min(procW, procH) * RUB_RADIUS_RATIO;
           if (d < radius) {
-            const c = Math.cos((d / radius) * Math.PI / 2);
-            const falloff = c * c;
+            // 改成 cos 而不是 cos^2，让边缘也有拉扯，整体更像"拉丝"
+            const falloff = Math.cos((d / radius) * Math.PI / 2);
             finalSx -= t.dx * falloff * t.strength;
             finalSy -= t.dy * falloff * t.strength;
           }
@@ -362,6 +359,20 @@ function renderDeform() {
   procCtx.putImageData(out, 0, 0);
 }
 
+// ===== 拳头 emoji 跟随 =====
+function drawPunchCursor() {
+  if (mode !== 'punch') return;
+  for (const t of touches.values()) {
+    ctx.save();
+    ctx.font = '48px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.globalAlpha = t.releasing ? Math.max(0, t.releaseT) : 1;
+    ctx.fillText('👊', t.curX, t.curY);
+    ctx.restore();
+  }
+}
+
 let lastFpsTime = performance.now();
 let frameCount = 0;
 
@@ -391,6 +402,7 @@ function loop() {
     renderDeform();
     ctx.drawImage(procCanvas, baseX, baseY, imgW, imgH);
   }
+  drawPunchCursor();
 
   frameCount++;
   const now = performance.now();
@@ -506,7 +518,7 @@ document.querySelectorAll('.mode-btn').forEach(b => {
 
 resize();
 loop();
-loadImage('./1.jpg?v=5');
+loadImage('./1.jpg?v=6');
 </script>
 </body>
 </html>
