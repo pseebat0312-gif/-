@@ -139,11 +139,11 @@ const PROC_MAX = 220;
 // 回弹速度：非常慢，拉扯感强
 const RELEASE_SPEED = 0.012;
 
-// 揉搓模式：力度大（拉丝）、半径大、边缘也拉扯
-const RUB_RADIUS_RATIO = 0.55;
+// 揉搓模式：半径折中，力度保持
+const RUB_RADIUS_RATIO = 0.38;
 const RUB_STRENGTH = 2.5;
 
-// 出拳模式：力度猛猛大
+// 出拳模式
 const PUNCH_RADIUS_RATIO = 0.45;
 const PUNCH_DEPTH = 2.2;
 
@@ -214,7 +214,7 @@ function loadImage(src) {
     done = true;
     loadingEl.classList.remove('show');
     if (!ok) {
-      hint.textContent = '❌ 图片加载失败，检查 1.jpg 是否存在';
+      hint.textContent = '❌ 图片加载失败，检查 2.jpg 是否存在';
       hint.style.opacity = 1;
     }
   };
@@ -326,7 +326,6 @@ function renderDeform() {
         if (t.mode === 'rub') {
           const radius = Math.min(procW, procH) * RUB_RADIUS_RATIO;
           if (d < radius) {
-            // 改成 cos 而不是 cos^2，让边缘也有拉扯，整体更像"拉丝"
             const falloff = Math.cos((d / radius) * Math.PI / 2);
             finalSx -= t.dx * falloff * t.strength;
             finalSy -= t.dy * falloff * t.strength;
@@ -359,7 +358,6 @@ function renderDeform() {
   procCtx.putImageData(out, 0, 0);
 }
 
-// ===== 拳头 emoji 跟随 =====
 function drawPunchCursor() {
   if (mode !== 'punch') return;
   for (const t of touches.values()) {
@@ -518,7 +516,7 @@ document.querySelectorAll('.mode-btn').forEach(b => {
 
 resize();
 loop();
-loadImage('./1.jpg?v=6');
+loadImage('./2.jpg?v=7');
 </script>
 </body>
 </html>
