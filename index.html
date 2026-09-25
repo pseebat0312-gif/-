@@ -136,15 +136,15 @@ let W = 0, H = 0;
 
 const PROC_MAX = 220;
 
-// 回弹速度：非常慢，拉扯感强
-const RELEASE_SPEED = 0.012;
+// 回弹速度：越慢拉扯感越强
+const RELEASE_SPEED = 0.008;
 
-// 揉搓模式：半径折中，力度保持
-const RUB_RADIUS_RATIO = 0.38;
+// 揉搓模式
+const RUB_RADIUS_RATIO = 0.28;
 const RUB_STRENGTH = 2.5;
 
 // 出拳模式
-const PUNCH_RADIUS_RATIO = 0.45;
+const PUNCH_RADIUS_RATIO = 0.42;
 const PUNCH_DEPTH = 2.2;
 
 let mode = 'rub';
@@ -516,7 +516,7 @@ document.querySelectorAll('.mode-btn').forEach(b => {
 
 resize();
 loop();
-loadImage('./2.jpg?v=7');
+loadImage('./2.jpg?v=8');
 </script>
 </body>
 </html>
