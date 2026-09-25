@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>揉搓爱豆 · 解压果冻</title>
@@ -96,9 +97,25 @@ const hint = document.getElementById('hint');
 const fpsEl = document.getElementById('fps');
 const loadingEl = document.getElementById('loading');
 
+// ===== 所有变量先声明 =====
 let DPR = Math.min(window.devicePixelRatio || 1, 2);
-let W, H;
+let W = 0, H = 0;
 
+const PROC_MAX = 220;
+const RADIUS_RATIO = 0.35;
+const STRENGTH = 1.0;
+const RELEASE_SPEED = 0.12;
+
+let baseImage = null;
+let imgW = 0, imgH = 0, baseX = 0, baseY = 0;
+let procW = 0, procH = 0;
+let srcCanvas = null, srcCtx = null, srcData = null;
+let procCanvas = null, procCtx = null;
+let needRefreshSrc = false;
+
+const touches = new Map();
+
+// ===== 函数声明（提升，不会报错）=====
 function resize() {
   W = window.innerWidth;
   H = window.innerHeight;
@@ -111,27 +128,6 @@ function resize() {
   ctx.imageSmoothingQuality = 'high';
   if (baseImage) layoutImage();
 }
-window.addEventListener('resize', resize);
-window.addEventListener('orientationchange', () => setTimeout(resize, 200));
-resize();
-
-// ===== 处理分辨率 =====
-const PROC_MAX = 220;
-
-// ===== 形变参数 =====
-const RADIUS_RATIO = 0.35;
-const STRENGTH = 1.0;
-const RELEASE_SPEED = 0.12;
-
-// ===== 状态 =====
-let baseImage = null;
-let imgW, imgH, baseX, baseY;
-let procW, procH;
-let srcCanvas = null, srcCtx = null, srcData = null;
-let procCanvas = null, procCtx = null;
-let needRefreshSrc = false;
-
-const touches = new Map();
 
 function layoutImage() {
   if (!baseImage) return;
@@ -303,7 +299,6 @@ let lastFpsTime = performance.now();
 let frameCount = 0;
 
 function loop() {
-  // 延迟读取像素，避免卡主线程
   if (needRefreshSrc && srcCtx) {
     try {
       srcData = srcCtx.getImageData(0, 0, procW, procH);
@@ -339,7 +334,6 @@ function loop() {
   }
   requestAnimationFrame(loop);
 }
-loop();
 
 function getTouchPos(t) {
   const rect = canvas.getBoundingClientRect();
@@ -381,6 +375,7 @@ function onTouchEnd(e) {
   }
 }
 
+// ===== 事件绑定 =====
 canvas.addEventListener('touchstart', onTouchStart, { passive: false });
 canvas.addEventListener('touchmove', onTouchMove, { passive: false });
 canvas.addEventListener('touchend', onTouchEnd);
@@ -412,7 +407,10 @@ canvas.addEventListener('mouseup', () => {
   mouseDown = false;
 });
 
-// ===== 工具栏：只剩一个上传按钮 =====
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+
+// ===== 工具栏 =====
 const btn = document.createElement('button');
 btn.className = 'upload-btn';
 btn.textContent = '＋';
@@ -426,8 +424,10 @@ fileInput.addEventListener('change', (e) => {
   fileInput.value = '';
 });
 
-// ===== 打开就加载 1.jpg（加 ?v=2 破缓存）=====
-loadImage('./1.jpg?v=2');
+// ===== 所有东西都准备好了，现在开始 =====
+resize();               // ← 关键：放到最后！
+loop();                 // 启动主循环
+loadImage('./1.jpg?v=3');  // 加载图片
 </script>
 </body>
 </html>
