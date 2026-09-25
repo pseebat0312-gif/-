@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>揉搓爱豆 · 解压果冻</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #1a1a24;
+    font-family: -apple-system, "PingFang SC", sans-serif;
+    color: #fff;
+    touch-action: none; /* 关键：禁止手机滚动/缩放干扰 */
+  }
+  #stage {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+  #toolbar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(10px);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .thumb {
+    flex: 0 0 auto;
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255,255,255,0.35);
+    transition: transform .15s, border-color .15s;
+  }
+  .thumb.active { border-color: #ff5c8a; transform: scale(1.12); }
+  .upload-btn {
+    flex: 0 0 auto;
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    border: 2px dashed rgba(255,255,255,0.5);
+    background: transparent;
+    color: #fff;
+    font-size: 24px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #hint {
+    position: fixed;
+    top: 20px; left: 0; right: 0;
+    text-align: center;
+    font-size: 14px;
+    opacity: 0.7;
+    pointer-events: none;
+    transition: opacity .6s;
+  }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="hint">👆 用手指按住爱豆揉一揉</div>
+<div id="toolbar"></div>
+<input type="file" id="fileInput" accept="image/*" hidden>
+
+<script>
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+const toolbar = document.getElementById('toolbar');
+const fileInput = document.getElementById('fileInput');
+const hint = document.getElementById('hint');
+
+let DPR = Math.min(window.devicePixelRatio || 1, 2);
+let W, H;
+
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * DPR;
+  canvas.height = H * DPR;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ====== 预设图库：换成你的爱豆图片链接即可 ======
+const PRESETS = [
+  'https://i.pravatar.cc/400?img=1',
+  'https://i.pravatar.cc/400?img=5',
+  'https://i.pravatar.cc/400?img=12',
+  'https://i.pravatar.cc/400?img=25',
+  'https://i.pravatar.cc/400?img=33',
+];
+
+// ====== 状态 ======
+let baseImage = null;      // 原始 Image 对象
+let srcCanvas = null;      // 原始像素数据（离屏 canvas）
+let srcData = null;        // ImageData
+let imgW, imgH, baseX, baseY;
+
+let dragging = false;
+let pressX = 0, pressY = 0;
+let curX = 0, curY = 0;
+let releaseT = 0;          // 0~1，松手后从1衰减到0
+let releasing = false;
+
+const RADIUS = 110;        // 影响半径（相对图片像素）
+const STRENGTH = 1.0;
+
+// ====== 加载图片 ======
+function loadImage(src) {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    baseImage = img;
+    // 按屏幕尺寸缩放，最长边不超过屏幕 80%
+    const maxSize = Math.min(W, H) * 0.8;
+    const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+    imgW = Math.round(img.width * scale);
+    imgH = Math.round(img.height * scale);
+    baseX = (W - imgW) / 2;
+    baseY = (H - imgH) / 2 - 40; // 稍微上移，给底部工具栏留空间
+
+    // 离屏 canvas 存原图
+    srcCanvas = document.createElement('canvas');
+    srcCanvas.width = imgW;
+    srcCanvas.height = imgH;
+    const sctx = srcCanvas.getContext('2d');
+    sctx.drawImage(img, 0, 0, imgW, imgH);
+    srcData = sctx.getImageData(0, 0, imgW, imgH);
+  };
+  img.src = src;
+}
+
+// ====== 形变核心：生成形变后的 ImageData ======
+const dstCanvas = document.createElement('canvas');
+const dstCtx = dstCanvas.getContext('2d');
+
+function renderDeform(dx, dy) {
+  if (!srcData) return;
+  const w = imgW, h = imgH;
+
+  // 拖动点相对图片的坐标
+  const px = pressX - baseX;
+  const py = pressY - baseY;
+
+  dstCanvas.width = w;
+  dstCanvas.height = h;
+  const out = dstCtx.createImageData(w, h);
+  const src = srcData.data;
+  const dst = out.data;
+  const R2 = RADIUS * RADIUS;
+
+  // 逐像素（手机屏幕图不大，够用；要更快可以后续上 WebGL）
+  for (let y = 0; y < h; y++) {
+    const dyImg = y - py;
+    for (let x = 0; x < w; x++) {
+      const dxImg = x - px;
+      const d2 = dxImg * dxImg + dyImg * dyImg;
+      let sx = x, sy = y;
+      if (d2 < R2) {
+        const d = Math.sqrt(d2);
+        // cos^2 平滑衰减
+        const c = Math.cos((d / RADIUS) * Math.PI / 2);
+        const falloff = c * c;
+        sx = Math.round(x - dx * falloff);
+        sy = Math.round(y - dy * falloff);
+        if (sx < 0) sx = 0; else if (sx >= w) sx = w - 1;
+        if (sy < 0) sy = 0; else if (sy >= h) sy = h - 1;
+      }
+      const di = (y * w + x) * 4;
+      const si = (sy * w + sx) * 4;
+      dst[di] = src[si];
+      dst[di+1] = src[si+1];
+      dst[di+2] = src[si+2];
+      dst[di+3] = src[si+3];
+    }
+  }
+  dstCtx.putImageData(out, 0, 0);
+}
+
+// ====== 主循环 ======
+function loop() {
+  ctx.clearRect(0, 0, W, H);
+
+  if (srcData) {
+    let dx = 0, dy = 0;
+    if (dragging) {
+      dx = curX - pressX;
+      dy = curY - pressY;
+      renderDeform(dx, dy);
+    } else if (releasing) {
+      releaseT -= 0.08;
+      if (releaseT <= 0) { releaseT = 0; releasing = false; }
+      dx = (curX - pressX) * releaseT;
+      dy = (curY - pressY) * releaseT;
+      renderDeform(dx, dy);
+    } else {
+      renderDeform(0, 0);
+    }
+    ctx.drawImage(dstCanvas, baseX, baseY);
+  }
+
+  requestAnimationFrame(loop);
+}
+loop();
+
+// ====== 交互 ======
+function getPos(e) {
+  const t = e.touches ? e.touches[0] : e;
+  const rect = canvas.getBoundingClientRect();
+  return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+}
+
+function onDown(e) {
+  if (!srcData) return;
+  e.preventDefault();
+  const p = getPos(e);
+  pressX = p.x; pressY = p.y;
+  curX = p.x; curY = p.y;
+  dragging = true;
+  releasing = false;
+  hint.style.opacity = 0;
+}
+
+function onMove(e) {
+  if (!dragging) return;
+  e.preventDefault();
+  const p = getPos(e);
+  curX = p.x; curY = p.y;
+}
+
+function onUp(e) {
+  if (!dragging) return;
+  dragging = false;
+  releasing = true;
+  releaseT = 1.0;
+}
+
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup', onUp);
+canvas.addEventListener('mouseleave', onUp);
+
+canvas.addEventListener('touchstart', onDown, { passive: false });
+canvas.addEventListener('touchmove', onMove, { passive: false });
+canvas.addEventListener('touchend', onUp);
+canvas.addEventListener('touchcancel', onUp);
+
+// ====== 工具栏 ======
+function buildToolbar() {
+  toolbar.innerHTML = '';
+  PRESETS.forEach((url, i) => {
+    const img = document.createElement('img');
+    img.src = url;
+    img.className = 'thumb' + (i === 0 ? ' active' : '');
+    img.onclick = () => {
+      document.querySelectorAll('.thumb').forEach(t => t.classList.remove('active'));
+      img.classList.add('active');
+      loadImage(url);
+    };
+    toolbar.appendChild(img);
+  });
+
+  const btn = document.createElement('button');
+  btn.className = 'upload-btn';
+  btn.textContent = '＋';
+  btn.onclick = () => fileInput.click();
+  toolbar.appendChild(btn);
+}
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  document.querySelectorAll('.thumb').forEach(t => t.classList.remove('active'));
+  loadImage(url);
+});
+
+buildToolbar();
+loadImage(PRESETS[0]);
+</script>
+</body>
+</html>
