@@ -20,11 +20,7 @@
     -webkit-user-select: none;
     overscroll-behavior: none;
   }
-  #stage {
-    display: block;
-    width: 100vw;
-    height: 100vh;
-  }
+  #stage { display: block; width: 100vw; height: 100vh; }
   #toolbar {
     position: fixed;
     bottom: 0; left: 0; right: 0;
@@ -32,10 +28,7 @@
     background: rgba(0,0,0,0.5);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    justify-content: center;
+    display: flex; gap: 12px; align-items: center; justify-content: center;
     z-index: 10;
   }
   .upload-btn {
@@ -43,35 +36,25 @@
     border-radius: 50%;
     border: 2px dashed rgba(255,255,255,0.5);
     background: rgba(255,255,255,0.08);
-    color: #fff;
-    font-size: 26px;
+    color: #fff; font-size: 26px;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer;
   }
   #modeBar {
     position: fixed;
     top: 72px; left: 0; right: 0;
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    z-index: 20;
-    pointer-events: none;
+    display: flex; justify-content: center; gap: 10px;
+    z-index: 20; pointer-events: none;
   }
   .mode-btn {
     pointer-events: auto;
-    padding: 8px 20px;
-    border-radius: 22px;
+    padding: 8px 20px; border-radius: 22px;
     border: 1.5px solid rgba(255,255,255,0.3);
     background: rgba(0,0,0,0.45);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    color: #fff;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    transition: all .2s;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    color: #fff; font-size: 14px;
+    display: flex; align-items: center; gap: 6px;
+    cursor: pointer; transition: all .2s;
   }
   .mode-btn.active {
     border-color: #ff5c8a;
@@ -81,32 +64,22 @@
   #hint {
     position: fixed;
     top: 24px; left: 0; right: 0;
-    text-align: center;
-    font-size: 15px;
-    opacity: 0.75;
-    pointer-events: none;
+    text-align: center; font-size: 15px;
+    opacity: 0.75; pointer-events: none;
     transition: opacity .8s;
     text-shadow: 0 2px 8px rgba(0,0,0,0.5);
-    padding: 0 20px;
-    z-index: 20;
+    padding: 0 20px; z-index: 20;
   }
   #fps {
-    position: fixed;
-    top: 8px; right: 12px;
-    font-size: 11px;
-    opacity: 0.4;
-    pointer-events: none;
-    font-family: monospace;
+    position: fixed; top: 8px; right: 12px;
+    font-size: 11px; opacity: 0.4;
+    pointer-events: none; font-family: monospace;
   }
   #loading {
-    position: fixed;
-    inset: 0;
+    position: fixed; inset: 0;
     background: rgba(0,0,0,0.7);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    z-index: 100;
+    display: none; align-items: center; justify-content: center;
+    font-size: 16px; z-index: 100;
   }
   #loading.show { display: flex; }
 </style>
@@ -136,15 +109,15 @@ let W = 0, H = 0;
 
 const PROC_MAX = 220;
 
-// 回弹速度：越慢拉扯感越强
+// 回弹速度：非常慢，拉扯感强
 const RELEASE_SPEED = 0.008;
 
-// 揉搓模式
-const RUB_RADIUS_RATIO = 0.28;
-const RUB_STRENGTH = 2.5;
+// 揉搓模式：半径小、力度大，曲线更陡 → 拉丝感
+const RUB_RADIUS_RATIO = 0.25;
+const RUB_STRENGTH = 3.5;
 
-// 出拳模式
-const PUNCH_RADIUS_RATIO = 0.42;
+// 出拳模式：半径小一点
+const PUNCH_RADIUS_RATIO = 0.35;
 const PUNCH_DEPTH = 2.2;
 
 let mode = 'rub';
@@ -173,7 +146,6 @@ function resize() {
 
 function layoutImage() {
   if (!baseImage) return;
-
   const maxSize = Math.min(W, H) * 0.78;
   const scale = Math.min(maxSize / baseImage.width, maxSize / baseImage.height, 1);
   imgW = Math.round(baseImage.width * scale);
@@ -208,7 +180,6 @@ function loadImage(src) {
   loadingEl.classList.add('show');
   const img = new Image();
   let done = false;
-
   const finish = (ok) => {
     if (done) return;
     done = true;
@@ -218,9 +189,7 @@ function loadImage(src) {
       hint.style.opacity = 1;
     }
   };
-
   const timer = setTimeout(() => finish(false), 10000);
-
   img.onload = () => {
     clearTimeout(timer);
     baseImage = img;
@@ -239,7 +208,6 @@ function loadFromFile(file) {
   const url = URL.createObjectURL(file);
   const img = new Image();
   let done = false;
-
   const finish = (ok) => {
     if (done) return;
     done = true;
@@ -249,9 +217,7 @@ function loadFromFile(file) {
       hint.style.opacity = 1;
     }
   };
-
   const timer = setTimeout(() => finish(false), 10000);
-
   img.onload = () => {
     URL.revokeObjectURL(url);
     clearTimeout(timer);
@@ -326,7 +292,9 @@ function renderDeform() {
         if (t.mode === 'rub') {
           const radius = Math.min(procW, procH) * RUB_RADIUS_RATIO;
           if (d < radius) {
-            const falloff = Math.cos((d / radius) * Math.PI / 2);
+            // cos^4：更陡，中心拉得远，边缘几乎不动 → 形成"尖"和"拉丝"
+            const c = Math.cos((d / radius) * Math.PI / 2);
+            const falloff = c * c * c * c;
             finalSx -= t.dx * falloff * t.strength;
             finalSy -= t.dy * falloff * t.strength;
           }
@@ -362,7 +330,7 @@ function drawPunchCursor() {
   if (mode !== 'punch') return;
   for (const t of touches.values()) {
     ctx.save();
-    ctx.font = '48px serif';
+    ctx.font = '36px serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.globalAlpha = t.releasing ? Math.max(0, t.releaseT) : 1;
@@ -384,7 +352,6 @@ function loop() {
     needRefreshSrc = false;
     loadingEl.classList.remove('show');
   }
-
   for (const t of touches.values()) {
     if (t.releasing) {
       t.releaseT -= RELEASE_SPEED;
@@ -394,14 +361,12 @@ function loop() {
   for (const [id, t] of touches) {
     if (t.releasing && t.releaseT <= 0) touches.delete(id);
   }
-
   ctx.clearRect(0, 0, W, H);
   if (srcData) {
     renderDeform();
     ctx.drawImage(procCanvas, baseX, baseY, imgW, imgH);
   }
   drawPunchCursor();
-
   frameCount++;
   const now = performance.now();
   if (now - lastFpsTime > 500) {
@@ -516,7 +481,7 @@ document.querySelectorAll('.mode-btn').forEach(b => {
 
 resize();
 loop();
-loadImage('./2.jpg?v=8');
+loadImage('./2.jpg?v=9');
 </script>
 </body>
 </html>
