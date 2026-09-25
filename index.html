@@ -2,17 +2,22 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>揉搓爱豆 · 解压果冻</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     width: 100%; height: 100%;
     overflow: hidden;
-    background: #1a1a24;
-    font-family: -apple-system, "PingFang SC", sans-serif;
+    background: radial-gradient(circle at 50% 30%, #2a2a3d 0%, #12121a 100%);
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
     color: #fff;
-    touch-action: none; /* 关键：禁止手机滚动/缩放干扰 */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    overscroll-behavior: none;
   }
   #stage {
     display: block;
@@ -23,57 +28,91 @@
     position: fixed;
     bottom: 0; left: 0; right: 0;
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-    background: rgba(0,0,0,0.55);
-    backdrop-filter: blur(10px);
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     display: flex;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
+  #toolbar::-webkit-scrollbar { display: none; }
   .thumb {
     flex: 0 0 auto;
-    width: 54px; height: 54px;
+    width: 56px; height: 56px;
     border-radius: 50%;
     object-fit: cover;
-    border: 2px solid rgba(255,255,255,0.35);
-    transition: transform .15s, border-color .15s;
+    border: 2px solid rgba(255,255,255,0.3);
+    transition: transform .2s, border-color .2s, box-shadow .2s;
+    cursor: pointer;
   }
-  .thumb.active { border-color: #ff5c8a; transform: scale(1.12); }
+  .thumb.active {
+    border-color: #ff5c8a;
+    transform: scale(1.15);
+    box-shadow: 0 0 16px rgba(255,92,138,0.6);
+  }
   .upload-btn {
     flex: 0 0 auto;
-    width: 54px; height: 54px;
+    width: 56px; height: 56px;
     border-radius: 50%;
-    border: 2px dashed rgba(255,255,255,0.5);
+    border: 2px dashed rgba(255,255,255,0.45);
     background: transparent;
     color: #fff;
-    font-size: 24px;
+    font-size: 26px;
     display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
   }
   #hint {
     position: fixed;
-    top: 20px; left: 0; right: 0;
+    top: 24px; left: 0; right: 0;
     text-align: center;
-    font-size: 14px;
-    opacity: 0.7;
+    font-size: 15px;
+    opacity: 0.75;
     pointer-events: none;
-    transition: opacity .6s;
+    transition: opacity .8s;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    padding: 0 20px;
   }
+  #fps {
+    position: fixed;
+    top: 8px; right: 12px;
+    font-size: 11px;
+    opacity: 0.4;
+    pointer-events: none;
+    font-family: monospace;
+  }
+  #loading {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    z-index: 100;
+  }
+  #loading.show { display: flex; }
 </style>
 </head>
 <body>
 <canvas id="stage"></canvas>
-<div id="hint">👆 用手指按住爱豆揉一揉</div>
+<div id="hint">👆 多根手指按住爱豆揉一揉</div>
+<div id="fps"></div>
+<div id="loading">加载中…</div>
 <div id="toolbar"></div>
-<input type="file" id="fileInput" accept="image/*" hidden>
-
+<input type="file" id="fileInput" accept="image/*" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;">
 <script>
 const canvas = document.getElementById('stage');
 const ctx = canvas.getContext('2d');
 const toolbar = document.getElementById('toolbar');
 const fileInput = document.getElementById('fileInput');
 const hint = document.getElementById('hint');
+const fpsEl = document.getElementById('fps');
+const loadingEl = document.getElementById('loading');
 
+// ===== 屏幕尺寸 =====
 let DPR = Math.min(window.devicePixelRatio || 1, 2);
 let W, H;
 
@@ -85,11 +124,16 @@ function resize() {
   canvas.style.width = W + 'px';
   canvas.style.height = H + 'px';
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  // 重新计算显示位置
+  if (baseImage) layoutImage();
 }
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 resize();
 
-// ====== 预设图库：换成你的爱豆图片链接即可 ======
+// ===== 预设图库（换成你自己的图片路径即可）=====
 const PRESETS = [
   'https://i.pravatar.cc/400?img=1',
   'https://i.pravatar.cc/400?img=5',
@@ -98,162 +142,275 @@ const PRESETS = [
   'https://i.pravatar.cc/400?img=33',
 ];
 
-// ====== 状态 ======
-let baseImage = null;      // 原始 Image 对象
-let srcCanvas = null;      // 原始像素数据（离屏 canvas）
-let srcData = null;        // ImageData
-let imgW, imgH, baseX, baseY;
+// ===== 处理分辨率 =====
+const PROC_MAX = 220;
 
-let dragging = false;
-let pressX = 0, pressY = 0;
-let curX = 0, curY = 0;
-let releaseT = 0;          // 0~1，松手后从1衰减到0
-let releasing = false;
-
-const RADIUS = 110;        // 影响半径（相对图片像素）
+// ===== 形变参数 =====
+const RADIUS_RATIO = 0.35;
 const STRENGTH = 1.0;
+const RELEASE_SPEED = 0.12;
 
-// ====== 加载图片 ======
+// ===== 状态 =====
+let baseImage = null;
+let imgW, imgH, baseX, baseY;
+let procW, procH;
+let srcCanvas, srcCtx, srcData;
+let procCanvas, procCtx;
+
+const touches = new Map();
+
+// ===== 计算显示和处理尺寸 =====
+function layoutImage() {
+  if (!baseImage) return;
+  const maxSize = Math.min(W, H) * 0.78;
+  const scale = Math.min(maxSize / baseImage.width, maxSize / baseImage.height, 1);
+  imgW = Math.round(baseImage.width * scale);
+  imgH = Math.round(baseImage.height * scale);
+  baseX = (W - imgW) / 2;
+  baseY = (H - imgH) / 2 - 50;
+
+  const pScale = Math.min(PROC_MAX / baseImage.width, PROC_MAX / baseImage.height, 1);
+  procW = Math.max(1, Math.round(baseImage.width * pScale));
+  procH = Math.max(1, Math.round(baseImage.height * pScale));
+
+  srcCanvas = document.createElement('canvas');
+  srcCanvas.width = procW;
+  srcCanvas.height = procH;
+  srcCtx = srcCanvas.getContext('2d');
+  srcCtx.drawImage(baseImage, 0, 0, procW, procH);
+  srcData = srcCtx.getImageData(0, 0, procW, procH);
+
+  procCanvas = document.createElement('canvas');
+  procCanvas.width = procW;
+  procCanvas.height = procH;
+  procCtx = procCanvas.getContext('2d');
+
+  touches.clear();
+}
+
+// ===== 从 URL 加载 =====
 function loadImage(src) {
+  loadingEl.classList.add('show');
   const img = new Image();
   img.crossOrigin = 'anonymous';
   img.onload = () => {
     baseImage = img;
-    // 按屏幕尺寸缩放，最长边不超过屏幕 80%
-    const maxSize = Math.min(W, H) * 0.8;
-    const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
-    imgW = Math.round(img.width * scale);
-    imgH = Math.round(img.height * scale);
-    baseX = (W - imgW) / 2;
-    baseY = (H - imgH) / 2 - 40; // 稍微上移，给底部工具栏留空间
-
-    // 离屏 canvas 存原图
-    srcCanvas = document.createElement('canvas');
-    srcCanvas.width = imgW;
-    srcCanvas.height = imgH;
-    const sctx = srcCanvas.getContext('2d');
-    sctx.drawImage(img, 0, 0, imgW, imgH);
-    srcData = sctx.getImageData(0, 0, imgW, imgH);
+    layoutImage();
+    loadingEl.classList.remove('show');
+  };
+  img.onerror = () => {
+    loadingEl.classList.remove('show');
+    hint.textContent = '❌ 图片加载失败，换一张试试';
+    hint.style.opacity = 1;
   };
   img.src = src;
 }
 
-// ====== 形变核心：生成形变后的 ImageData ======
-const dstCanvas = document.createElement('canvas');
-const dstCtx = dstCanvas.getContext('2d');
-
-function renderDeform(dx, dy) {
-  if (!srcData) return;
-  const w = imgW, h = imgH;
-
-  // 拖动点相对图片的坐标
-  const px = pressX - baseX;
-  const py = pressY - baseY;
-
-  dstCanvas.width = w;
-  dstCanvas.height = h;
-  const out = dstCtx.createImageData(w, h);
-  const src = srcData.data;
-  const dst = out.data;
-  const R2 = RADIUS * RADIUS;
-
-  // 逐像素（手机屏幕图不大，够用；要更快可以后续上 WebGL）
-  for (let y = 0; y < h; y++) {
-    const dyImg = y - py;
-    for (let x = 0; x < w; x++) {
-      const dxImg = x - px;
-      const d2 = dxImg * dxImg + dyImg * dyImg;
-      let sx = x, sy = y;
-      if (d2 < R2) {
-        const d = Math.sqrt(d2);
-        // cos^2 平滑衰减
-        const c = Math.cos((d / RADIUS) * Math.PI / 2);
-        const falloff = c * c;
-        sx = Math.round(x - dx * falloff);
-        sy = Math.round(y - dy * falloff);
-        if (sx < 0) sx = 0; else if (sx >= w) sx = w - 1;
-        if (sy < 0) sy = 0; else if (sy >= h) sy = h - 1;
-      }
-      const di = (y * w + x) * 4;
-      const si = (sy * w + sx) * 4;
-      dst[di] = src[si];
-      dst[di+1] = src[si+1];
-      dst[di+2] = src[si+2];
-      dst[di+3] = src[si+3];
-    }
-  }
-  dstCtx.putImageData(out, 0, 0);
+// ===== 从本地文件加载（手机上选相册）=====
+function loadFromFile(file) {
+  loadingEl.classList.add('show');
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    baseImage = img;
+    layoutImage();
+    loadingEl.classList.remove('show');
+    hint.style.opacity = 0;
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    loadingEl.classList.remove('show');
+    hint.textContent = '❌ 图片读取失败，换一张试试';
+    hint.style.opacity = 1;
+  };
+  img.src = url;
 }
 
-// ====== 主循环 ======
+// ===== 形变计算 =====
+function renderDeform() {
+  if (!srcData) return;
+
+  const w = procW, h = procH;
+  const src = srcData.data;
+
+  const sx = procW / imgW;
+  const sy = procH / imgH;
+
+  const activeTouches = [];
+  for (const t of touches.values()) {
+    let dx = 0, dy = 0;
+    if (t.releasing) {
+      dx = (t.curX - t.pressX) * t.releaseT;
+      dy = (t.curY - t.pressY) * t.releaseT;
+    } else {
+      dx = t.curX - t.pressX;
+      dy = t.curY - t.pressY;
+    }
+    if (Math.abs(dx) < 0.3 && Math.abs(dy) < 0.3) continue;
+    activeTouches.push({
+      px: (t.pressX - baseX) * sx,
+      py: (t.pressY - baseY) * sy,
+      dx: dx * sx,
+      dy: dy * sy,
+    });
+  }
+
+  if (activeTouches.length === 0) {
+    procCtx.putImageData(srcData, 0, 0);
+    return;
+  }
+
+  const radius = Math.min(procW, procH) * RADIUS_RATIO;
+  const r2 = radius * radius;
+
+  const out = procCtx.createImageData(w, h);
+  const dst = out.data;
+
+  for (let y = 0; y < h; y++) {
+    const rowOffset = y * w;
+    for (let x = 0; x < w; x++) {
+      let totalDx = 0, totalDy = 0;
+
+      for (let k = 0; k < activeTouches.length; k++) {
+        const t = activeTouches[k];
+        const ddx = x - t.px;
+        const ddy = y - t.py;
+        const d2 = ddx * ddx + ddy * ddy;
+        if (d2 < r2) {
+          const d = Math.sqrt(d2);
+          const c = Math.cos((d / radius) * Math.PI / 2);
+          const falloff = c * c;
+          totalDx += t.dx * falloff;
+          totalDy += t.dy * falloff;
+        }
+      }
+
+      let sxI = Math.round(x - totalDx * STRENGTH);
+      let syI = Math.round(y - totalDy * STRENGTH);
+      if (sxI < 0) sxI = 0; else if (sxI >= w) sxI = w - 1;
+      if (syI < 0) syI = 0; else if (syI >= h) syI = h - 1;
+
+      const di = (rowOffset + x) * 4;
+      const si = (syI * w + sxI) * 4;
+      dst[di] = src[si];
+      dst[di + 1] = src[si + 1];
+      dst[di + 2] = src[si + 2];
+      dst[di + 3] = src[si + 3];
+    }
+  }
+
+  procCtx.putImageData(out, 0, 0);
+}
+
+// ===== 主循环 =====
+let lastFpsTime = performance.now();
+let frameCount = 0;
+
 function loop() {
+  for (const t of touches.values()) {
+    if (t.releasing) {
+      t.releaseT -= RELEASE_SPEED;
+      if (t.releaseT <= 0) t.releaseT = 0;
+    }
+  }
+  for (const [id, t] of touches) {
+    if (t.releasing && t.releaseT <= 0) touches.delete(id);
+  }
+
   ctx.clearRect(0, 0, W, H);
 
   if (srcData) {
-    let dx = 0, dy = 0;
-    if (dragging) {
-      dx = curX - pressX;
-      dy = curY - pressY;
-      renderDeform(dx, dy);
-    } else if (releasing) {
-      releaseT -= 0.08;
-      if (releaseT <= 0) { releaseT = 0; releasing = false; }
-      dx = (curX - pressX) * releaseT;
-      dy = (curY - pressY) * releaseT;
-      renderDeform(dx, dy);
-    } else {
-      renderDeform(0, 0);
-    }
-    ctx.drawImage(dstCanvas, baseX, baseY);
+    renderDeform();
+    ctx.drawImage(procCanvas, baseX, baseY, imgW, imgH);
+  }
+
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime > 500) {
+    fpsEl.textContent = Math.round(frameCount * 1000 / (now - lastFpsTime)) + ' fps';
+    frameCount = 0;
+    lastFpsTime = now;
   }
 
   requestAnimationFrame(loop);
 }
 loop();
 
-// ====== 交互 ======
-function getPos(e) {
-  const t = e.touches ? e.touches[0] : e;
+// ===== 多点触控 =====
+function getTouchPos(t) {
   const rect = canvas.getBoundingClientRect();
   return { x: t.clientX - rect.left, y: t.clientY - rect.top };
 }
 
-function onDown(e) {
+function onTouchStart(e) {
   if (!srcData) return;
   e.preventDefault();
-  const p = getPos(e);
-  pressX = p.x; pressY = p.y;
-  curX = p.x; curY = p.y;
-  dragging = true;
-  releasing = false;
   hint.style.opacity = 0;
+  for (const t of e.changedTouches) {
+    const p = getTouchPos(t);
+    touches.set(t.identifier, {
+      pressX: p.x, pressY: p.y,
+      curX: p.x, curY: p.y,
+      releaseT: 1, releasing: false,
+    });
+  }
 }
 
-function onMove(e) {
-  if (!dragging) return;
+function onTouchMove(e) {
+  if (!srcData) return;
   e.preventDefault();
-  const p = getPos(e);
-  curX = p.x; curY = p.y;
+  for (const t of e.changedTouches) {
+    const rec = touches.get(t.identifier);
+    if (!rec) continue;
+    const p = getTouchPos(t);
+    rec.curX = p.x;
+    rec.curY = p.y;
+  }
 }
 
-function onUp(e) {
-  if (!dragging) return;
-  dragging = false;
-  releasing = true;
-  releaseT = 1.0;
+function onTouchEnd(e) {
+  for (const t of e.changedTouches) {
+    const rec = touches.get(t.identifier);
+    if (!rec) continue;
+    rec.releasing = true;
+    rec.releaseT = 1.0;
+  }
 }
 
-canvas.addEventListener('mousedown', onDown);
-canvas.addEventListener('mousemove', onMove);
-canvas.addEventListener('mouseup', onUp);
-canvas.addEventListener('mouseleave', onUp);
+canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+canvas.addEventListener('touchend', onTouchEnd);
+canvas.addEventListener('touchcancel', onTouchEnd);
 
-canvas.addEventListener('touchstart', onDown, { passive: false });
-canvas.addEventListener('touchmove', onMove, { passive: false });
-canvas.addEventListener('touchend', onUp);
-canvas.addEventListener('touchcancel', onUp);
+// ===== 鼠标支持 =====
+let mouseDown = false;
+canvas.addEventListener('mousedown', (e) => {
+  if (!srcData) return;
+  hint.style.opacity = 0;
+  const rect = canvas.getBoundingClientRect();
+  const p = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  touches.set('mouse', {
+    pressX: p.x, pressY: p.y, curX: p.x, curY: p.y,
+    releaseT: 1, releasing: false,
+  });
+  mouseDown = true;
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (!mouseDown) return;
+  const rec = touches.get('mouse');
+  if (!rec) return;
+  const rect = canvas.getBoundingClientRect();
+  rec.curX = e.clientX - rect.left;
+  rec.curY = e.clientY - rect.top;
+});
+canvas.addEventListener('mouseup', () => {
+  const rec = touches.get('mouse');
+  if (rec) { rec.releasing = true; rec.releaseT = 1.0; }
+  mouseDown = false;
+});
 
-// ====== 工具栏 ======
+// ===== 工具栏 =====
 function buildToolbar() {
   toolbar.innerHTML = '';
   PRESETS.forEach((url, i) => {
@@ -265,6 +422,7 @@ function buildToolbar() {
       img.classList.add('active');
       loadImage(url);
     };
+    img.onerror = () => { img.style.opacity = 0.3; };
     toolbar.appendChild(img);
   });
 
@@ -278,9 +436,10 @@ function buildToolbar() {
 fileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  const url = URL.createObjectURL(file);
   document.querySelectorAll('.thumb').forEach(t => t.classList.remove('active'));
-  loadImage(url);
+  loadFromFile(file);
+  // 允许连续上传同一张图
+  fileInput.value = '';
 });
 
 buildToolbar();
