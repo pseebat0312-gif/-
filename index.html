@@ -86,9 +86,9 @@
 </head>
 <body>
 <canvas id="stage"></canvas>
-<div id="hint">👆 按住一个点往旁边拉，拉出一根丝</div>
+<div id="hint">👆 按住一个点慢慢拖，脸会被拉长但不会糊</div>
 <div id="modeBar">
-  <div class="mode-btn active" data-mode="rub">✋ 拉丝</div>
+  <div class="mode-btn active" data-mode="rub">✋ 揉搓</div>
   <div class="mode-btn" data-mode="punch">👊 出拳</div>
 </div>
 <div id="fps"></div>
@@ -109,14 +109,13 @@ let W = 0, H = 0;
 
 const PROC_MAX = 220;
 
-// 回弹速度：非常慢
 const RELEASE_SPEED = 0.006;
 
-// 拉丝模式：沿拖动方向拉伸
-const RUB_RADIUS_RATIO = 0.35;  // 沿方向的影响长度
-const RUB_STRENGTH = 1.0;       // 力度不大，只拉出细丝
+// 揉搓：半径大一点，位移平滑递减
+const RUB_RADIUS_RATIO = 0.45;
+const RUB_STRENGTH = 0.9;
 
-// 出拳模式：半径小，但 emoji 大
+// 出拳
 const PUNCH_RADIUS_RATIO = 0.18;
 const PUNCH_DEPTH = 2.2;
 const PUNCH_EMOJI_SIZE = 64;
@@ -272,6 +271,11 @@ function renderDeform() {
   const out = procCtx.createImageData(w, h);
   const dst = out.data;
 
+  // 预计算揉搓半径
+  const rubRadius = Math.min(procW, procH) * RUB_RADIUS_RATIO;
+  const rubR2 = rubRadius * rubRadius;
+  const punchRadius = Math.min(procW, procH) * PUNCH_RADIUS_RATIO;
+
   for (let y = 0; y < h; y++) {
     const rowOffset = y * w;
     for (let x = 0; x < w; x++) {
@@ -282,52 +286,29 @@ function renderDeform() {
         const t = activeTouches[k];
 
         if (t.mode === 'rub') {
-          // ===== 拉丝模型 =====
-          // 沿拖动方向拉伸：只有拖动方向上的投影距离参与衰减
-          // 用 P 到 X 的向量 在 拖动方向 上的投影
-          const dxDrag = t.dx;
-          const dyDrag = t.dy;
-          const dragLen = Math.hypot(dxDrag, dyDrag);
-          if (dragLen < 0.5) continue;
+          const ddx = x - t.px;
+          const ddy = y - t.py;
+          const d2 = ddx * ddx + ddy * ddy;
 
-          const ux = dxDrag / dragLen;  // 拖动方向单位向量
-          const uy = dyDrag / dragLen;
+          if (d2 < rubR2) {
+            const d = Math.sqrt(d2);
+            const ratio = d / rubRadius;
+            // ===== 关键：用 (1 - ratio²)² 曲线 =====
+            // 中心位移最大，边缘平滑归零
+            // 这是"拉伸"最自然的曲线，不会搬运整块
+            const oneMinusR2 = 1 - ratio * ratio;
+            const falloff = oneMinusR2 * oneMinusR2;
 
-          // X 相对按下点的坐标
-          const vx = x - t.px;
-          const vy = y - t.py;
-
-          // 投影：沿拖动方向的距离
-          const proj = vx * ux + vy * uy;
-          // 垂直距离
-          const perp = -vx * uy + vy * ux;
-
-          // 沿方向的影响半径
-          const radius = Math.min(procW, procH) * RUB_RADIUS_RATIO;
-
-          // 只对按下点"后方"一段范围内拉伸（proj < 0 表示在拖动反方向）
-          if (proj > -radius * 0.3 && proj < radius) {
-            // 沿方向衰减：按下点处最强，越远越弱
-            const tProj = (proj + radius * 0.3) / (radius * 1.3);
-            const falloffProj = Math.max(0, 1 - tProj * tProj);
-
-            // 垂直方向也衰减：越偏离拖动轴越弱，形成"细丝"
-            const perpFactor = Math.max(0, 1 - (perp * perp) / (radius * radius * 0.15));
-
-            const falloff = falloffProj * perpFactor;
-
-            finalSx -= dxDrag * falloff * RUB_STRENGTH;
-            finalSy -= dyDrag * falloff * RUB_STRENGTH;
+            finalSx -= t.dx * falloff * RUB_STRENGTH;
+            finalSy -= t.dy * falloff * RUB_STRENGTH;
           }
         } else {
-          // ===== 出拳模型 =====
           const ddx = x - t.px;
           const ddy = y - t.py;
           const d = Math.sqrt(ddx * ddx + ddy * ddy);
-          const radius = Math.min(procW, procH) * PUNCH_RADIUS_RATIO;
-          if (d < radius && d > 0.01) {
-            const c = Math.cos((d / radius) * Math.PI / 2);
-            const falloff = c * c * PUNCH_DEPTH * t.releaseT * radius * 0.6;
+          if (d < punchRadius && d > 0.01) {
+            const c = Math.cos((d / punchRadius) * Math.PI / 2);
+            const falloff = c * c * PUNCH_DEPTH * t.releaseT * punchRadius * 0.6;
             const nx = ddx / d;
             const ny = ddy / d;
             finalSx += nx * falloff;
@@ -497,7 +478,7 @@ document.querySelectorAll('.mode-btn').forEach(b => {
     if (mode === 'punch') {
       hint.textContent = '👊 点一下爱豆，一拳打扁';
     } else {
-      hint.textContent = '👆 按住一个点往旁边拉，拉出一根丝';
+      hint.textContent = '👆 按住一个点慢慢拖，脸会被拉长但不会糊';
     }
     hint.style.opacity = 1;
     setTimeout(() => { hint.style.opacity = 0; }, 2000);
@@ -506,7 +487,7 @@ document.querySelectorAll('.mode-btn').forEach(b => {
 
 resize();
 loop();
-loadImage('./2.jpg?v=10');
+loadImage('./2.jpg?v=11');
 </script>
 </body>
 </html>
