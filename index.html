@@ -34,33 +34,16 @@
     display: flex;
     gap: 12px;
     align-items: center;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-  #toolbar::-webkit-scrollbar { display: none; }
-  .thumb {
-    flex: 0 0 auto;
-    width: 56px; height: 56px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2px solid rgba(255,255,255,0.3);
-    transition: transform .2s, border-color .2s, box-shadow .2s;
-    cursor: pointer;
-  }
-  .thumb.active {
-    border-color: #ff5c8a;
-    transform: scale(1.15);
-    box-shadow: 0 0 16px rgba(255,92,138,0.6);
+    justify-content: center;
+    z-index: 10;
   }
   .upload-btn {
-    flex: 0 0 auto;
-    width: 56px; height: 56px;
+    width: 64px; height: 64px;
     border-radius: 50%;
-    border: 2px dashed rgba(255,255,255,0.45);
-    background: transparent;
+    border: 2px dashed rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.08);
     color: #fff;
-    font-size: 26px;
+    font-size: 30px;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer;
   }
@@ -112,7 +95,6 @@ const hint = document.getElementById('hint');
 const fpsEl = document.getElementById('fps');
 const loadingEl = document.getElementById('loading');
 
-// ===== 屏幕尺寸 =====
 let DPR = Math.min(window.devicePixelRatio || 1, 2);
 let W, H;
 
@@ -126,21 +108,11 @@ function resize() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  // 重新计算显示位置
   if (baseImage) layoutImage();
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 resize();
-
-// ===== 预设图库（换成你自己的图片路径即可）=====
-const PRESETS = [
-  'https://i.pravatar.cc/400?img=1',
-  'https://i.pravatar.cc/400?img=5',
-  'https://i.pravatar.cc/400?img=12',
-  'https://i.pravatar.cc/400?img=25',
-  'https://i.pravatar.cc/400?img=33',
-];
 
 // ===== 处理分辨率 =====
 const PROC_MAX = 220;
@@ -159,7 +131,6 @@ let procCanvas, procCtx;
 
 const touches = new Map();
 
-// ===== 计算显示和处理尺寸 =====
 function layoutImage() {
   if (!baseImage) return;
   const maxSize = Math.min(W, H) * 0.78;
@@ -167,7 +138,7 @@ function layoutImage() {
   imgW = Math.round(baseImage.width * scale);
   imgH = Math.round(baseImage.height * scale);
   baseX = (W - imgW) / 2;
-  baseY = (H - imgH) / 2 - 50;
+  baseY = (H - imgH) / 2 - 40;
 
   const pScale = Math.min(PROC_MAX / baseImage.width, PROC_MAX / baseImage.height, 1);
   procW = Math.max(1, Math.round(baseImage.width * pScale));
@@ -188,11 +159,9 @@ function layoutImage() {
   touches.clear();
 }
 
-// ===== 从 URL 加载 =====
 function loadImage(src) {
   loadingEl.classList.add('show');
   const img = new Image();
-  img.crossOrigin = 'anonymous';
   img.onload = () => {
     baseImage = img;
     layoutImage();
@@ -200,13 +169,12 @@ function loadImage(src) {
   };
   img.onerror = () => {
     loadingEl.classList.remove('show');
-    hint.textContent = '❌ 图片加载失败，换一张试试';
+    hint.textContent = '❌ 图片加载失败，检查 1.jpg 是否和 index.html 在同一目录';
     hint.style.opacity = 1;
   };
   img.src = src;
 }
 
-// ===== 从本地文件加载（手机上选相册）=====
 function loadFromFile(file) {
   loadingEl.classList.add('show');
   const url = URL.createObjectURL(file);
@@ -227,13 +195,10 @@ function loadFromFile(file) {
   img.src = url;
 }
 
-// ===== 形变计算 =====
 function renderDeform() {
   if (!srcData) return;
-
   const w = procW, h = procH;
   const src = srcData.data;
-
   const sx = procW / imgW;
   const sy = procH / imgH;
 
@@ -271,7 +236,6 @@ function renderDeform() {
     const rowOffset = y * w;
     for (let x = 0; x < w; x++) {
       let totalDx = 0, totalDy = 0;
-
       for (let k = 0; k < activeTouches.length; k++) {
         const t = activeTouches[k];
         const ddx = x - t.px;
@@ -285,12 +249,10 @@ function renderDeform() {
           totalDy += t.dy * falloff;
         }
       }
-
       let sxI = Math.round(x - totalDx * STRENGTH);
       let syI = Math.round(y - totalDy * STRENGTH);
       if (sxI < 0) sxI = 0; else if (sxI >= w) sxI = w - 1;
       if (syI < 0) syI = 0; else if (syI >= h) syI = h - 1;
-
       const di = (rowOffset + x) * 4;
       const si = (syI * w + sxI) * 4;
       dst[di] = src[si];
@@ -299,11 +261,9 @@ function renderDeform() {
       dst[di + 3] = src[si + 3];
     }
   }
-
   procCtx.putImageData(out, 0, 0);
 }
 
-// ===== 主循环 =====
 let lastFpsTime = performance.now();
 let frameCount = 0;
 
@@ -319,7 +279,6 @@ function loop() {
   }
 
   ctx.clearRect(0, 0, W, H);
-
   if (srcData) {
     renderDeform();
     ctx.drawImage(procCanvas, baseX, baseY, imgW, imgH);
@@ -332,12 +291,10 @@ function loop() {
     frameCount = 0;
     lastFpsTime = now;
   }
-
   requestAnimationFrame(loop);
 }
 loop();
 
-// ===== 多点触控 =====
 function getTouchPos(t) {
   const rect = canvas.getBoundingClientRect();
   return { x: t.clientX - rect.left, y: t.clientY - rect.top };
@@ -383,7 +340,6 @@ canvas.addEventListener('touchmove', onTouchMove, { passive: false });
 canvas.addEventListener('touchend', onTouchEnd);
 canvas.addEventListener('touchcancel', onTouchEnd);
 
-// ===== 鼠标支持 =====
 let mouseDown = false;
 canvas.addEventListener('mousedown', (e) => {
   if (!srcData) return;
@@ -410,40 +366,22 @@ canvas.addEventListener('mouseup', () => {
   mouseDown = false;
 });
 
-// ===== 工具栏 =====
-function buildToolbar() {
-  toolbar.innerHTML = '';
-  PRESETS.forEach((url, i) => {
-    const img = document.createElement('img');
-    img.src = url;
-    img.className = 'thumb' + (i === 0 ? ' active' : '');
-    img.onclick = () => {
-      document.querySelectorAll('.thumb').forEach(t => t.classList.remove('active'));
-      img.classList.add('active');
-      loadImage(url);
-    };
-    img.onerror = () => { img.style.opacity = 0.3; };
-    toolbar.appendChild(img);
-  });
-
-  const btn = document.createElement('button');
-  btn.className = 'upload-btn';
-  btn.textContent = '＋';
-  btn.onclick = () => fileInput.click();
-  toolbar.appendChild(btn);
-}
+// ===== 工具栏：只剩一个上传按钮 =====
+const btn = document.createElement('button');
+btn.className = 'upload-btn';
+btn.textContent = '＋';
+btn.onclick = () => fileInput.click();
+toolbar.appendChild(btn);
 
 fileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  document.querySelectorAll('.thumb').forEach(t => t.classList.remove('active'));
   loadFromFile(file);
-  // 允许连续上传同一张图
   fileInput.value = '';
 });
 
-buildToolbar();
-loadImage(PRESETS[0]);
+// ===== 打开就加载 1.jpg =====
+loadImage('./1.jpg');
 </script>
 </body>
 </html>
