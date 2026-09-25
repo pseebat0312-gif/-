@@ -111,14 +111,17 @@ const PROC_MAX = 220;
 
 const RELEASE_SPEED = 0.006;
 
-// 揉搓：半径大一点，位移平滑递减
-const RUB_RADIUS_RATIO = 0.45;
+// 揉搓
+const RUB_RADIUS_RATIO = 0.22;
 const RUB_STRENGTH = 0.9;
 
-// 出拳
-const PUNCH_RADIUS_RATIO = 0.18;
+// 出拳（半径加大）
+const PUNCH_RADIUS_RATIO = 0.24;
 const PUNCH_DEPTH = 2.2;
 const PUNCH_EMOJI_SIZE = 64;
+
+// 手 emoji 大小
+const RUB_EMOJI_SIZE = 56;
 
 let mode = 'rub';
 
@@ -271,7 +274,6 @@ function renderDeform() {
   const out = procCtx.createImageData(w, h);
   const dst = out.data;
 
-  // 预计算揉搓半径
   const rubRadius = Math.min(procW, procH) * RUB_RADIUS_RATIO;
   const rubR2 = rubRadius * rubRadius;
   const punchRadius = Math.min(procW, procH) * PUNCH_RADIUS_RATIO;
@@ -293,12 +295,8 @@ function renderDeform() {
           if (d2 < rubR2) {
             const d = Math.sqrt(d2);
             const ratio = d / rubRadius;
-            // ===== 关键：用 (1 - ratio²)² 曲线 =====
-            // 中心位移最大，边缘平滑归零
-            // 这是"拉伸"最自然的曲线，不会搬运整块
             const oneMinusR2 = 1 - ratio * ratio;
             const falloff = oneMinusR2 * oneMinusR2;
-
             finalSx -= t.dx * falloff * RUB_STRENGTH;
             finalSy -= t.dy * falloff * RUB_STRENGTH;
           }
@@ -332,15 +330,20 @@ function renderDeform() {
   procCtx.putImageData(out, 0, 0);
 }
 
-function drawPunchCursor() {
-  if (mode !== 'punch') return;
+// ===== 光标 emoji（两种模式都跟随）=====
+function drawCursor() {
   for (const t of touches.values()) {
     ctx.save();
-    ctx.font = PUNCH_EMOJI_SIZE + 'px serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.globalAlpha = t.releasing ? Math.max(0, t.releaseT) : 1;
-    ctx.fillText('👊', t.curX, t.curY);
+    if (mode === 'punch') {
+      ctx.font = PUNCH_EMOJI_SIZE + 'px serif';
+      ctx.fillText('👊', t.curX, t.curY);
+    } else {
+      ctx.font = RUB_EMOJI_SIZE + 'px serif';
+      ctx.fillText('✋', t.curX, t.curY);
+    }
     ctx.restore();
   }
 }
@@ -372,7 +375,7 @@ function loop() {
     renderDeform();
     ctx.drawImage(procCanvas, baseX, baseY, imgW, imgH);
   }
-  drawPunchCursor();
+  drawCursor();
   frameCount++;
   const now = performance.now();
   if (now - lastFpsTime > 500) {
@@ -487,7 +490,7 @@ document.querySelectorAll('.mode-btn').forEach(b => {
 
 resize();
 loop();
-loadImage('./2.jpg?v=11');
+loadImage('./2.jpg?v=12');
 </script>
 </body>
 </html>
